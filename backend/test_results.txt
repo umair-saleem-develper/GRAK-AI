@@ -1,0 +1,153 @@
+
+====================================
+TEST: A. Simple educational explanation
+PROMPT: What is artificial intelligence? Explain in simple words, max 2 sentences.
+------------------------------------
+Artificial intelligence is the creation of computer systems that can perform tasks normally requiring human intelligence, such as learning, reasoning, and perception. It lets machines analyze data, make decisions, and improve their performance over time.
+
+====================================
+TEST: B. Complex scientific reasoning
+PROMPT: Why does time dilate at relativistic speeds? Keep it concise but accurate.
+------------------------------------
+Time dilation is a direct consequence of the Lorentz transformation, which any inertial frame must obey because the speed of light \(c\) is the same for all observers.
+
+For a clock moving at speed \(v\) relative to an observer, the interval between two ticks measured by the observer (\(\Delta t\)) is related to the interval measured in the clock’s own rest frame (\(\Delta \tau\), the *proper time*) by  
+
+\[
+\Delta t = \gamma \,\Delta \tau ,\qquad 
+\gamma = \frac{1}{\sqrt{1 - v^{2}/c^{2}}}.
+\]
+
+Since \(\gamma \ge 1\) and grows without bound as \(v \to c\), the moving clock’s ticks appear stretched out: it runs slower by the factor \(1/\gamma\).  
+
+The underlying reason is that space and time mix together under Lorentz transformations; preserving the invariant spacetime interval forces the temporal component to expand when the spatial component (the relative velocity) increases. Hence, at relativistic speeds, observers in different inertial frames disagree on elapsed time, and each sees the other’s clock run slower.
+
+====================================
+TEST: C. Hypothetical scenario with assumptions
+PROMPT: If we built a space elevator on Mars today using Kevlar, how much payload could it lift per day?
+------------------------------------
+**Short answer:**  
+A Mars‑Kevlar space‑elevator could theoretically support a *static* payload of a few ×10⁶ kg at the surface, but the *daily* throughput would be limited by the speed and number of climbers. With realistic climber designs (≈ 50 m s⁻¹ ascent speed, ≈ 10 t payload per climber) and a modest fleet of 5–10 climbers, you could lift **≈ 50–100 tonnes per day**. Faster climbers or a larger fleet could raise the figure into the few‑hundred‑tonne range, but it would still be far below the static capacity.
+
+---
+
+### How the numbers are obtained
+
+| Quantity | Value (assumed) | Reasoning |
+|----------|----------------|-----------|
+| **Mars gravity** | \(g_{Mars}=3.71\;{\rm m\,s^{-2}}\) | Standard value |
+| **Kevlar tensile strength** | \(\sigma_{max}=1.8\times10^{9}\;{\rm Pa}\) | Conservative, safety‑factor‑adjusted value (Kevlar’s ultimate strength ≈ 3.6 GPa) |
+| **Kevlar density** | \(\rho_{kev}=1.44\times10^{3}\;{\rm kg\,m^{-3}}\) | Material data |
+| **Elevator length** | \(L\approx 1.7\times10^{7}\;{\rm m}\) | Surface → Mars geostationary orbit (≈ 17 000 km) |
+| **Maximum static payload** | \(\approx2.0\times10^{6}\;{\rm kg}\) | Derived from the simple tension balance \(\displaystyle m_{max}\approx\frac{\sigma_{max}}{g_{Mars}\,\rho_{kev}}\,\frac{\rho_{kev}\pi r^{2}}{2g_{Mars}}\) (the calculation you already ran). This is the *total* mass the tether could hold at the surface without breaking. |
+| **Climber ascent speed** | 50 m s⁻¹ (≈ 180 km h⁻¹) | Comparable to the fastest Earth‑based elevator concepts; higher speeds demand more power and stronger climber‑tether attachments. |
+| **Round‑trip time** | \(\displaystyle t_{\rm trip}= \frac{2L}{v}\approx\frac{2\times1.7\times10^{7}}{50}\approx 6.8\times10^{5}\;{\rm s}\approx 190\;{\rm h}\) | One‑way ascent ≈ 95 h; a full up‑and‑down cycle ≈ 8 days. In practice you would stagger many climbers so that a new payload departs the surface roughly every 24 h. |
+| **Payload per climber** | 10 t (10 000 kg) | A realistic payload for a 50 m s⁻¹ climber using current high‑power electric or laser‑beamed propulsion; larger payloads would require a thicker tether section or stronger material. |
+| **Number of simultaneous climbers** | 5–10 (typical design) | Limited by tether‑attachment points, power‑beaming infrastructure, and safety margins. |
+
+**Daily throughput estimate**
+
+\[
+\text{Throughput} = N_{\rm climbers}\times m_{\rm payload\ per\ climber}
+\]
+
+- With \(N=5\) climbers: \(5\times10\;\text{t}=50\;\text{t day}^{-1}\)
+- With \(N=10\) climbers: \(10\times10\;\text{t}=100\;\text{t day}^{-1}\)
+
+If climbers could run at 100 m s⁻¹ (doubling speed) and the fleet were expanded to 20 units, the daily lift could approach **≈ 200 t day⁻¹**. Even then, the figure is well below the static capacity of ~2 × 10⁶ kg; the limiting factor is operational logistics, not material strength.
+
+---
+
+### Key uncertainties & assumptions
+
+1. **Material safety factor** – I used a 50 % reduction of Kevlar’s ultimate strength to account for defects, fatigue, and environmental degradation. A more aggressive design could raise the static limit but would also increase risk.
+2. **Climber technology** – The 50 m s⁻¹ speed assumes mature, high‑power beamed‑energy or nuclear‑thermal propulsion. Faster climbers are conceivable but would need proportionally more power and tighter tether‑attachment tolerances.
+3. **Power delivery** – Continuous 100 kW‑scale beamed power per climber is assumed to be available from a surface laser/microwave array. Power‑budget constraints could reduce the number of simultaneous climbers.
+4. **Operational downtime** – Maintenance, weather, and orbital debris avoidance are ignored; real‑world throughput would be somewhat lower.
+5. **Tether geometry** – The simple calculation treats the tether as a uniform cylinder of 0.1 m radius. An optimal taper (thicker near the surface, thinner aloft) would change the static capacity but not the order‑of‑magnitude daily lift.
+
+---
+
+### Bottom line
+
+- **Static capacity:** ≈ 2 million kg (theoretical maximum mass the tether can support at the surface).
+- **Realistic daily lift:** **50–100 tonnes per day** with a modest fleet of 5–10 climbers traveling at ~50 m s⁻¹. Faster or more numerous climbers could push the daily throughput into the few‑hundred‑tonne range, but operational constraints will dominate.
+
+====================================
+TEST: D. Coding problem
+PROMPT: Write a python function to check if a string is a palindrome.
+------------------------------------
+Here’s a compact, production‑ready implementation that works for any string (including Unicode) and ignores case and non‑alphanumeric characters:
+
+```python
+import re
+
+def is_palindrome(s: str) -> bool:
+    """
+    Return True if `s` is a palindrome, False otherwise.
+
+    The check is case‑insensitive and ignores all characters
+    that are not letters or digits.
+    """
+    # Keep only alphanumeric characters and convert to lower case
+    cleaned = re.sub(r'[^A-Za-z0-9]', '', s).lower()
+    # Compare the cleaned string with its reverse
+    return cleaned == cleaned[::-1]
+```
+
+**Usage example**
+
+```python
+print(is_palindrome("A man, a plan, a canal: Panama"))  # True
+print(is_palindrome("hello"))                           # False
+```
+
+====================================
+TEST: E. Mathematical problem
+PROMPT: What is the integral of e^(2x)? Show the formula correctly formatted.
+------------------------------------
+\[
+\int e^{2x}\,dx = \frac{1}{2}\,e^{2x}+C
+\]
+
+where \(C\) is the constant of integration.
+
+====================================
+TEST: F. Uncertain/impossible factual question
+PROMPT: What was the exact population of the uncontacted Sentinelese tribe in the year 1492?
+------------------------------------
+The exact number of Sentinelese people living on North Sentinel Island in 1492 is not known.  
+
+- **No contemporary records:** The Sentinelese have had no written history, and there were no European, Asian, or other external observers who documented the island’s inhabitants at that time.  
+- **Modern estimates:** Anthropologists today estimate the current population to be roughly 50–150 individuals, based on occasional aerial surveys and limited observations. Extrapolating backward to the late 15th century would be speculative, as we lack data on birth rates, mortality, disease exposure, or migration that could affect population size over the intervening 500 years.  
+
+**Conclusion:** There is no reliable source that can provide an exact population figure for the Sentinelese in 1492; any specific number would be an unfounded guess.
+
+====================================
+TEST: G. User explicitly requests a particular format
+PROMPT: List three primary colors. Do NOT use bullet points. Comma separated only.
+------------------------------------
+Red, Blue, Yellow
+
+====================================
+TEST: H. Markdown + LaTeX rendering
+PROMPT: Give me the quadratic formula and render a 2x2 identity matrix.
+------------------------------------
+**Quadratic formula**
+
+For the quadratic equation \(ax^{2}+bx+c=0\) (with \(a\neq0\)) the solutions are  
+
+\[
+x=\frac{-b\pm\sqrt{b^{2}-4ac}}{2a}.
+\]
+
+---
+
+**2 × 2 identity matrix**
+
+\[
+\begin{pmatrix}
+1 & 0 \\
+0 & 1
+\end{pmatrix}
+\]

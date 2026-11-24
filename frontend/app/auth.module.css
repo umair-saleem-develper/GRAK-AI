@@ -1,0 +1,199 @@
+/* auth.module.css */
+.authContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background-color: #000000;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.authModal {
+  background-color: #212121;
+  width: 100%;
+  max-width: 400px;
+  border-radius: 12px;
+  padding: 40px 32px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  position: relative;
+}
+
+.closeButton {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: none;
+  border: none;
+  color: #a0a0a0;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  color: #ffffff;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: #a0a0a0;
+  text-align: center;
+  margin-bottom: 32px;
+  line-height: 1.5;
+}
+
+.socialButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 14px;
+  margin-bottom: 12px;
+  background-color: transparent;
+  border: 1px solid #424242;
+  border-radius: 9999px;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  position: relative;
+}
+
+.socialButton:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.socialIcon {
+  position: absolute;
+  left: 20px;
+  display: flex;
+  align-items: center;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  color: #616161;
+  font-size: 12px;
+  margin: 24px 0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid #424242;
+}
+
+.divider::before {
+  margin-right: 16px;
+}
+
+.divider::after {
+  margin-left: 16px;
+}
+
+.inputField {
+  width: 100%;
+  padding: 16px 20px;
+  background-color: transparent;
+  border: 1px solid #424242;
+  border-radius: 9999px;
+  color: #ffffff;
+  font-size: 15px;
+  margin-bottom: 16px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.inputField:focus {
+  border-color: #ffffff;
+}
+
+.inputField::placeholder {
+  color: #757575;
+}
+
+.primaryButton {
+  width: 100%;
+  padding: 16px;
+  background-color: #ffffff;
+  border: none;
+  border-radius: 9999px;
+  color: #000000;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.primaryButton:hover {
+  background-color: #e0e0e0;
+}
+
+.primaryButton:disabled {
+  background-color: #757575;
+  cursor: not-allowed;
+}
+
+.errorMsg {
+  color: #ef4444;
+  font-size: 13px;
+  text-align: center;
+  margin-bottom: 16px;
+  background: rgba(239, 68, 68, 0.1);
+  padding: 10px;
+  border-radius: 8px;
+}
+
+.successMsg {
+  color: #10b981;
+  font-size: 13px;
+  text-align: center;
+  margin-bottom: 16px;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 10px;
+  border-radius: 8px;
+}
+
+.link {
+  color: #a0a0a0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.link:hover {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+/* OTP Specific styles */
+.otpInput {
+  width: 100%;
+  padding: 16px 20px;
+  background-color: transparent;
+  border: 1px solid #424242;
+  border-radius: 9999px;
+  color: #ffffff;
+  font-size: 18px;
+  letter-spacing: 4px;
+  text-align: center;
+  margin-bottom: 16px;
+  outline: none;
+}
+.otpInput:focus {
+  border-color: #ffffff;
+}

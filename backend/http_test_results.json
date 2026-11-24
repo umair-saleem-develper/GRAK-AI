@@ -1,0 +1,46 @@
+[
+  {
+    "label": "1. hi",
+    "http_status": 200,
+    "provider": "groq",
+    "model": "openai/gpt-oss-120b",
+    "fallback_occurred": true,
+    "content_received": true,
+    "response_length": 26,
+    "is_complete": true,
+    "preview": "Hello. How can I help you?"
+  },
+  {
+    "label": "2. TEST OK",
+    "http_status": 200,
+    "provider": "groq",
+    "model": "openai/gpt-oss-120b",
+    "fallback_occurred": true,
+    "content_received": true,
+    "response_length": 7,
+    "is_complete": true,
+    "preview": "TEST OK"
+  },
+  {
+    "label": "3. Photosynthesis",
+    "http_status": 200,
+    "provider": "groq",
+    "model": "openai/gpt-oss-120b",
+    "fallback_occurred": true,
+    "content_received": true,
+    "response_length": 571,
+    "is_complete": true,
+    "preview": "Photosynthesis is the process by which green plants, algae, and some bacteria convert light energy into chemical energy, storing it in the b"
+  },
+  {
+    "label": "4. Long coding",
+    "http_status": 200,
+    "provider": "groq",
+    "model": "openai/gpt-oss-120b",
+    "fallback_occurred": true,
+    "content_received": true,
+    "response_length": 14118,
+    "is_complete": true,
+    "preview": "## 1. High\u2011level architecture    ``` +-------------------+          +-------------------+          +-------------------+ |   Next.js client "
+  }
+]
