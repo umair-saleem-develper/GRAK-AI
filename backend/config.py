@@ -3,8 +3,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql+psycopg://admin:password123@db:5432/omniai_db"
-    TEST_DATABASE_URL: str = "postgresql+psycopg://admin:password123@db:5432/omniai_db_test"
+    DATABASE_URL: str = "sqlite:///./test.db"
+    TEST_DATABASE_URL: str = "sqlite:///./test_suite.db"
     
     JWT_SECRET_KEY: str = "supersecretkey_please_change_in_production"
     JWT_ALGORITHM: str = "HS256"

@@ -19,8 +19,8 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# Script to wait for DB and run migrations
+# Script to optionally run migrations and start FastAPI
 COPY start.sh /start.sh
-RUN chmod +x /start.sh
+RUN sed -i 's/\r$//' /start.sh && chmod +x /start.sh
 
 CMD ["/start.sh"]
