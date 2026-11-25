@@ -20,7 +20,13 @@ from services.intent_router import (
     INTENT_TEXT
 )
 from services.image_generation import generate_ai_image
-from services.nvidia_image import generate_nvidia_image
+from services.image_studio import (
+    generate_or_edit_image,
+    is_followup_edit_request,
+    is_long_detailed_prompt,
+    sanitize_block_prompt,
+    extract_latest_generated_image,
+)
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
 gateway = AIGateway()
@@ -30,6 +36,7 @@ class MessageRequest(BaseModel):
     content: str
     uploaded_text: Optional[str] = None # Text extracted from uploaded files to prepend
     image_base64: Optional[str] = None # Inline image data for Gemini multimodal vision
+    edit_image_url: Optional[str] = None # Target generated image URL for iterative editing
     mode: Optional[str] = None # "create_image" or None
 
 def generate_title_task(conversation_id: str, first_message: str):
@@ -145,24 +152,44 @@ async def send_message(
     history_msgs = db.query(Message).filter(Message.conversation_id == conversation_id).order_by(Message.created_at.desc()).limit(10).all()
     history_msgs.reverse()
 
-    # Format recent history for context
+    # Format recent history for context (exclude current user message when inspecting prior turns)
+    prior_history = [m for m in history_msgs if m.id != user_msg.id]
     recent_history_context = [{"role": m.role, "content": m.content} for m in history_msgs]
 
-    # Mode: Direct Image Creation (skips intent router completely)
-    if msg_req.mode == "create_image":
-        from services.nvidia_image import generate_nvidia_image
+    # Mode: Direct Image Creation OR Explicit "Edit" Button Target
+    if msg_req.mode == "create_image" or msg_req.edit_image_url:
+        source_image_ref = msg_req.edit_image_url.strip() if msg_req.edit_image_url else None
+        source_image_b64 = msg_req.image_base64
+        prior_prompt = None
+
+        if not source_image_ref and not source_image_b64:
+            followup = is_followup_edit_request(msg_req.content, prior_history, mode="create_image")
+            if followup:
+                source_image_ref, prior_prompt = followup
+        elif source_image_ref:
+            latest = extract_latest_generated_image(prior_history)
+            if latest:
+                prior_prompt = latest[1]
+
         logger.info(
-            f"[CreateImageMode] mode=create_image → skipping intent router. "
-            f"raw_prompt='{msg_req.content[:80]}'"
+            f"[CreateImageMode] mode={msg_req.mode} edit_target={bool(source_image_ref or source_image_b64)} "
+            f"lines={len(msg_req.content.splitlines())} raw_prompt='{msg_req.content[:80]}'"
         )
 
         async def direct_image_generator():
             # 1. Send meta event immediately so client knows conversation is registered
             yield f"data: {json.dumps({'type': 'meta', 'conversation_id': conversation_id})}\n\n"
 
-            # 2. Run image generation as a background task, sending SSE keep-alives every 1s
+            # 2. Run image generation/editing as a background task, sending SSE keep-alives every 1s
             # This ensures Next.js proxy rewrite and browser fetch NEVER hit an idle timeout or drop!
-            gen_task = asyncio.create_task(generate_nvidia_image(msg_req.content))
+            gen_task = asyncio.create_task(
+                generate_or_edit_image(
+                    prompt=msg_req.content,
+                    source_image_ref=source_image_ref,
+                    source_image_b64=source_image_b64,
+                    prior_prompt=prior_prompt,
+                )
+            )
             while not gen_task.done():
                 try:
                     await asyncio.wait_for(asyncio.shield(gen_task), timeout=1.0)
@@ -171,23 +198,27 @@ async def send_message(
 
             nv_result = await gen_task
 
-            # Log provider decision (never logs the key)
-            provider = nv_result.get("provider", "nvidia")
+            # Log provider decision (never logs any API key)
+            provider = nv_result.get("provider", "none")
+            model_used = nv_result.get("model", "unknown")
             fallback = nv_result.get("fallback", False)
+            edited = nv_result.get("edited", False)
             enhanced = nv_result.get("enhanced_prompt", msg_req.content)
             logger.info(
-                f"[CreateImageMode] RESULT provider={provider} fallback={fallback} "
-                f"success={nv_result.get('success')} enhanced_prompt='{enhanced[:80]}'"
+                f"[CreateImageMode] RESULT provider={provider} model={model_used} "
+                f"edited={edited} fallback={fallback} success={nv_result.get('success')} "
+                f"enhanced_prompt='{enhanced[:80]}'"
             )
 
             # Provider event — frontend logs this via console.debug, never shown in UI
-            yield f"data: {json.dumps({'type': 'provider', 'provider': provider, 'fallback': fallback})}\n\n"
+            yield f"data: {json.dumps({'type': 'provider', 'provider': provider, 'model': model_used, 'fallback': fallback, 'edited': edited})}\n\n"
 
             if nv_result.get("success") and nv_result.get("url"):
+                safe_card_prompt = sanitize_block_prompt(nv_result.get("prompt", msg_req.content))
                 img_block = (
                     f":::generated-image\n"
                     f"image: {nv_result['url']}\n"
-                    f"prompt: {nv_result.get('prompt', msg_req.content)}\n"
+                    f"prompt: {safe_card_prompt}\n"
                     f":::\n"
                 )
                 yield f"data: {json.dumps({'type': 'chunk', 'content': img_block})}\n\n"
@@ -195,7 +226,8 @@ async def send_message(
                     conversation_id=conversation_id,
                     role="assistant",
                     content=img_block,
-                    provider=provider
+                    provider=provider,
+                    model=model_used,
                 )
                 db.add(ai_msg)
                 db.commit()
@@ -206,7 +238,8 @@ async def send_message(
                     conversation_id=conversation_id,
                     role="assistant",
                     content=err_text,
-                    provider=provider
+                    provider=provider,
+                    model=model_used,
                 )
                 db.add(ai_msg)
                 db.commit()
@@ -232,18 +265,35 @@ async def send_message(
     deterministic_hero_block = ""
     visual_enrichment = None
 
+    # Conversational follow-up image edit detection in regular chat right after a generated image
+    chat_edit_target = None
+    if intent_type != INTENT_CODE and prior_history:
+        last_msg = prior_history[-1]
+        if getattr(last_msg, "role", None) == "assistant" and ":::generated-image" in (getattr(last_msg, "content", "") or ""):
+            chat_edit_target = is_followup_edit_request(msg_req.content, prior_history, mode=None)
+            if chat_edit_target:
+                intent_type = INTENT_IMAGE_GENERATION
+
     if intent_type == INTENT_IMAGE_GENERATION:
-        # User explicitly asked to create / generate / draw an image or custom diagram
-        target_prompt = classification.get("prompt", msg_req.content)
-        is_diag = classification.get("is_diagram", False)
-        if is_diag:
-            ai_img_result = await generate_ai_image(target_prompt, is_diagram=True)
-        else:
-            ai_img_result = await generate_nvidia_image(target_prompt)
+        # Preserve full untruncated prompt for long descriptions or iterative edits
+        is_long = is_long_detailed_prompt(msg_req.content)
+        target_prompt = msg_req.content if (is_long or chat_edit_target) else classification.get("prompt", msg_req.content)
+        is_diag = classification.get("is_diagram", False) and not chat_edit_target
+        source_ref = chat_edit_target[0] if chat_edit_target else None
+        prior_p = chat_edit_target[1] if chat_edit_target else None
+
+        ai_img_result = await generate_or_edit_image(
+            prompt=target_prompt,
+            source_image_ref=source_ref,
+            source_image_b64=msg_req.image_base64,
+            prior_prompt=prior_p,
+            is_diagram=is_diag,
+        )
         if ai_img_result.get("success"):
+            safe_card_prompt = sanitize_block_prompt(ai_img_result.get("prompt", target_prompt))
             deterministic_hero_block = f""":::generated-image
 image: {ai_img_result['url']}
-prompt: {ai_img_result['prompt']}
+prompt: {safe_card_prompt}
 :::
 
 """

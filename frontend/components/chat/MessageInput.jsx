@@ -129,6 +129,8 @@ export default function MessageInput({
   isGenerating,
   onStop,
   isEmpty,
+  editingImage = null,
+  onClearEditingImage = null,
 }) {
   const [content, setContent] = useState("");
   const [isCreateImageMode, setIsCreateImageMode] = useState(false);
@@ -220,6 +222,15 @@ export default function MessageInput({
       window.removeEventListener("storage", loadProjects);
     };
   }, []);
+
+  // Focus composer automatically when user clicks "Edit" on a generated image
+  useEffect(() => {
+    if (editingImage?.url) {
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 50);
+    }
+  }, [editingImage]);
 
   // Listen for activate-create-image-mode from Sidebar or elsewhere
   useEffect(() => {
@@ -802,14 +813,18 @@ export default function MessageInput({
       }
     }
 
+    const effectiveMode =
+      isCreateImageMode || Boolean(editingImage?.url) ? "create_image" : null;
     onSendMessage(
       content,
       uploadedText,
       imageBase64,
-      isCreateImageMode ? "create_image" : null,
+      effectiveMode,
+      editingImage?.url || null,
     );
     setContent("");
     setIsCreateImageMode(false);
+    onClearEditingImage?.();
     clearFile();
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -817,6 +832,11 @@ export default function MessageInput({
   };
 
   const handleKeyDown = (e) => {
+    if (e.key === "Escape" && editingImage?.url) {
+      e.preventDefault();
+      onClearEditingImage?.();
+      return;
+    }
     if (e.key === "Escape" && isCreateImageMode) {
       e.preventDefault();
       setIsCreateImageMode(false);
@@ -1231,6 +1251,41 @@ export default function MessageInput({
         ) : (
           /* NORMAL SEARCH BAR MODE: isVoiceActive === false */
           <>
+            {/* Editing target image preview pill */}
+            {editingImage?.url && (
+              <div className="mb-2 flex items-center justify-between gap-2.5 px-2.5 py-1.5 rounded-2xl bg-purple-500/10 border border-purple-500/30">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <img
+                    src={editingImage.url}
+                    alt="Editing target"
+                    className="w-9 h-9 rounded-lg object-cover border border-purple-400/30 shrink-0"
+                  />
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-xs font-semibold text-purple-200 leading-tight">
+                      Editing image...
+                    </span>
+                    {editingImage.prompt && (
+                      <span className="text-[11px] text-purple-300/70 truncate max-w-[320px]">
+                        {editingImage.prompt}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClearEditingImage?.();
+                    textareaRef.current?.focus();
+                  }}
+                  className="p-1 rounded-full text-purple-300 hover:text-white hover:bg-purple-500/20 transition-colors cursor-pointer shrink-0"
+                  title="Cancel image edit"
+                  aria-label="Cancel image edit"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
             {/* Top: Input Area */}
             <div className="relative w-full flex flex-wrap items-center gap-2">
               {/* Create image mode chip */}
@@ -1269,11 +1324,13 @@ export default function MessageInput({
                   placeholder={
                     isUploading
                       ? "Uploading file..."
-                      : isCreateImageMode
-                        ? "Describe the image you want"
-                        : isEmpty
-                          ? placeholders[placeholderIndex]
-                          : "Ask anything"
+                      : editingImage?.url
+                        ? "Describe what you want to change in this image..."
+                        : isCreateImageMode
+                          ? "Describe the image you want"
+                          : isEmpty
+                            ? placeholders[placeholderIndex]
+                            : "Ask anything"
                   }
                   className="w-full bg-transparent text-white outline-none resize-none scrollbar-thin text-[16px] leading-[24px] relative z-10 m-0 border-0 box-border"
                   style={{

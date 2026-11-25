@@ -44,6 +44,9 @@ async def generate_ai_image(
     else:
         enhanced_prompt = clean_prompt
 
+    if len(enhanced_prompt) > 2200:
+        enhanced_prompt = enhanced_prompt[:2200].rsplit(" ", 1)[0]
+
     encoded = urllib.parse.quote(enhanced_prompt)
     image_url = f"https://image.pollinations.ai/prompt/{encoded}?width={width}&height={height}&model={model}&nologo=true&enhance=false"
 

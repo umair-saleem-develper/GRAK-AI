@@ -107,7 +107,10 @@ def _clean_prompt(raw: str) -> str:
     if len(words) <= 5:
         article = "an" if s[0].lower() in "aeiou" else "a"
         return f"{article} {s}{_QUALITY}"
-    return s + _QUALITY
+    if len(words) <= 25:
+        return s + _QUALITY
+    # Detailed / condensed prompts (>25 words) already specify style, lighting, and framing
+    return s
 
 
 def _extract_nvidia_image(data: Dict[str, Any]) -> Tuple[str | None, str | None]:

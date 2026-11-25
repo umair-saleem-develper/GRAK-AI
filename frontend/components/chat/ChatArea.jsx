@@ -20,6 +20,7 @@ import {
   ThumbsDown,
   Share2,
   Volume2,
+  Pencil,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import "katex/dist/katex.min.css";
@@ -431,7 +432,7 @@ export function MessageActions({ content, provider, onRegenerate }) {
 /**
  * AI Generated Image Card (FLUX.1 High-Fidelity Synthesis)
  */
-export function GeneratedImageCard({ image, prompt, onZoom }) {
+export function GeneratedImageCard({ image, prompt, onZoom, onEdit }) {
   const [currentSrc, setCurrentSrc] = useState(image || undefined);
   const [hasError, setHasError] = useState(false);
 
@@ -449,31 +450,90 @@ export function GeneratedImageCard({ image, prompt, onZoom }) {
     setCurrentSrc(retryUrl);
   };
 
+  const handleDownload = (e) => {
+    e.stopPropagation();
+    if (!imgSrc) return;
+    const link = document.createElement("a");
+    link.href = imgSrc;
+    link.download = `grak-image-${Date.now()}.png`;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   if (hasError) return null; // never leave an empty box
 
   const imgSrc =
     currentSrc && currentSrc.trim() ? currentSrc.trim() : undefined;
 
   return (
-    <div className="my-5">
+    <div className="my-5 group/img">
       <ImageLoader
         src={imgSrc}
         alt={prompt || "AI Generated"}
         label="Creating image"
         onFail={() => setHasError(true)}
       >
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (imgSrc && onZoom) onZoom(imgSrc, prompt, "", "", handleRetry);
-          }}
-          className="absolute bottom-4 right-4 px-2.5 py-1.5 rounded-lg bg-black/75 backdrop-blur-sm text-white opacity-0 hover:opacity-100 transition flex items-center gap-1.5 text-xs font-medium cursor-pointer z-10"
-          title="Zoom image"
-        >
-          <Maximize2 className="w-3.5 h-3.5" />
-          <span>Zoom</span>
-        </button>
+        <div className="absolute bottom-3 right-3 flex items-center gap-1.5 opacity-100 sm:opacity-0 sm:group-hover/img:opacity-100 transition-opacity z-10">
+          {onEdit && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (imgSrc) onEdit(imgSrc, prompt);
+              }}
+              className="px-2.5 py-1.5 rounded-lg bg-purple-600/90 hover:bg-purple-500 backdrop-blur-sm text-white transition flex items-center gap-1.5 text-xs font-medium cursor-pointer shadow-md"
+              title="Edit this image"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              <span>Edit</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleDownload}
+            className="p-1.5 rounded-lg bg-black/75 hover:bg-black/90 backdrop-blur-sm text-white transition flex items-center justify-center cursor-pointer"
+            title="Download image"
+            aria-label="Download image"
+          >
+            <Download className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRetry();
+            }}
+            className="p-1.5 rounded-lg bg-black/75 hover:bg-black/90 backdrop-blur-sm text-white transition flex items-center justify-center cursor-pointer"
+            title="Retry / reload image"
+            aria-label="Retry image"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (imgSrc && onZoom) {
+                onZoom(
+                  imgSrc,
+                  prompt,
+                  "",
+                  "",
+                  handleRetry,
+                  onEdit ? () => onEdit(imgSrc, prompt) : undefined,
+                );
+              }
+            }}
+            className="px-2.5 py-1.5 rounded-lg bg-black/75 hover:bg-black/90 backdrop-blur-sm text-white transition flex items-center gap-1.5 text-xs font-medium cursor-pointer"
+            title="Zoom image"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+            <span>Zoom</span>
+          </button>
+        </div>
       </ImageLoader>
     </div>
   );
@@ -610,41 +670,59 @@ function ZoomModal({ activeZoom, setActiveZoom }) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md"
       onClick={() => setActiveZoom(null)}
     >
-      {/* Close button — floating top-right */}
-      <button
-        onClick={() => setActiveZoom(null)}
-        className="absolute top-4 right-4 z-10 w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition"
-        aria-label="Close"
+      {/* Floating top-right action bar */}
+      <div
+        className="absolute top-4 right-4 z-10 flex items-center gap-2"
+        onClick={(e) => e.stopPropagation()}
       >
-        <X size={18} />
-      </button>
+        {activeZoom.onEdit && (
+          <button
+            onClick={() => {
+              activeZoom.onEdit();
+              setActiveZoom(null);
+            }}
+            className="h-9 px-3 rounded-full bg-purple-600/90 hover:bg-purple-500 text-white flex items-center gap-1.5 text-xs font-medium transition"
+            title="Edit image"
+            aria-label="Edit image"
+          >
+            <Pencil size={14} />
+            <span>Edit</span>
+          </button>
+        )}
 
-      {/* Save button */}
-      <button
-        onClick={() =>
-          activeZoom.image && window.open(activeZoom.image, "_blank")
-        }
-        className="absolute top-4 right-16 z-10 w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition"
-        title="Save image"
-        aria-label="Save image"
-      >
-        <Download size={16} />
-      </button>
+        {activeZoom.onRegenerate && (
+          <button
+            onClick={() => {
+              activeZoom.onRegenerate();
+              setActiveZoom(null);
+            }}
+            className="w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-purple-500/60 transition"
+            title="Regenerate"
+            aria-label="Regenerate image"
+          >
+            <RefreshCw size={16} />
+          </button>
+        )}
 
-      {/* Regenerate — if available */}
-      {activeZoom.onRegenerate && (
         <button
-          onClick={() => {
-            activeZoom.onRegenerate();
-            setActiveZoom(null);
-          }}
-          className="absolute top-4 right-28 z-10 w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-purple-500/60 transition"
-          title="Regenerate"
-          aria-label="Regenerate image"
+          onClick={() =>
+            activeZoom.image && window.open(activeZoom.image, "_blank")
+          }
+          className="w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition"
+          title="Save image"
+          aria-label="Save image"
         >
-          <RefreshCw size={16} />
+          <Download size={16} />
         </button>
-      )}
+
+        <button
+          onClick={() => setActiveZoom(null)}
+          className="w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition"
+          aria-label="Close"
+        >
+          <X size={18} />
+        </button>
+      </div>
 
       {/* Image — NO white frame */}
       <motion.img
@@ -683,6 +761,7 @@ export default function ChatArea({
   messages,
   isGenerating,
   onRegenerate,
+  onEditImage,
   zoomImage,
   setZoomImage,
 }) {
@@ -747,13 +826,15 @@ export default function ChatArea({
                                 key={`gen-${bIdx}`}
                                 image={block.image}
                                 prompt={block.prompt}
-                                onZoom={(img, title, src, url, onRegen) =>
+                                onEdit={onEditImage}
+                                onZoom={(img, title, src, url, onRegen, onEd) =>
                                   setActiveZoom({
                                     image: img,
                                     title: title || "AI Generated Visual",
                                     source: src,
                                     source_url: url,
                                     onRegenerate: onRegen,
+                                    onEdit: onEd,
                                   })
                                 }
                               />

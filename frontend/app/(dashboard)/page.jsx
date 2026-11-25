@@ -160,6 +160,7 @@ export default function Home() {
   const composerContainerRef = useRef(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [activeZoomImage, setActiveZoomImage] = useState(null);
+  const [editingImage, setEditingImage] = useState(null); // { url, prompt } | null
 
   // ResizeObserver to write --composer-h dynamically
   useEffect(() => {
@@ -233,6 +234,7 @@ export default function Home() {
     setStreamingContent("");
     streamingContentRef.current = "";
     setPendingUserMsg(null);
+    setEditingImage(null);
   };
 
   const handleSelectConversation = (id) => {
@@ -244,6 +246,7 @@ export default function Home() {
     setStreamingContent("");
     streamingContentRef.current = "";
     setPendingUserMsg(null);
+    setEditingImage(null);
   };
 
   const handleSelectProject = (proj) => {
@@ -268,8 +271,10 @@ export default function Home() {
     uploadedText,
     imageBase64,
     mode = null,
+    editImageUrl = null,
   ) => {
     setIsGenerating(true);
+    setEditingImage(null);
     setStreamingContent("");
     streamingContentRef.current = "";
     setStreamingProviderInfo(null);
@@ -318,6 +323,7 @@ export default function Home() {
       content,
       uploaded_text: uploadedText,
       image_base64: imageBase64,
+      edit_image_url: editImageUrl || undefined,
       mode: mode || undefined,
     };
 
@@ -824,6 +830,8 @@ export default function Home() {
                     isGenerating={isGenerating}
                     onStop={handleStop}
                     isEmpty={isEmpty}
+                    editingImage={editingImage}
+                    onClearEditingImage={() => setEditingImage(null)}
                   />
                   <p className="mt-2 text-center text-xs text-white/40">
                     Grak AI can make mistakes.
@@ -847,6 +855,9 @@ export default function Home() {
                   <ChatArea
                     messages={displayMessages}
                     isGenerating={isGenerating}
+                    onEditImage={(url, prompt) =>
+                      setEditingImage({ url, prompt })
+                    }
                     zoomImage={activeZoomImage}
                     setZoomImage={setActiveZoomImage}
                   />
@@ -893,6 +904,8 @@ export default function Home() {
                       isGenerating={isGenerating}
                       onStop={handleStop}
                       isEmpty={isEmpty}
+                      editingImage={editingImage}
+                      onClearEditingImage={() => setEditingImage(null)}
                     />
                     <p className="mt-2 text-center text-xs text-white/40">
                       Grak AI can make mistakes.
