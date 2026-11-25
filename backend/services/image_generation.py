@@ -52,10 +52,23 @@ async def generate_ai_image(
 
     # Pre-flight check with a fast HEAD/GET request to verify the service is reachable
     try:
-        async with httpx.AsyncClient(timeout=12.0) as client:
+        async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
             resp = await client.get(image_url)
-            if resp.status_code == 200 and len(resp.content) > 1000:
-                logger.info(f"[ImageGeneration] Successfully generated image ({len(resp.content)} bytes) for: {clean_prompt[:50]}")
+
+            # ── Pollinations rate-limit / promo card detection ─────────────────
+            # Rate-limited responses are typically tiny PNGs or HTML pages served
+            # with a non-image content-type.  Reject anything that:
+            #   (a) is not an image MIME type, OR
+            #   (b) is suspiciously small (< 3 kB — real images are always larger)
+            content_type = resp.headers.get("content-type", "").lower().split(";")[0].strip()
+            is_image_ct = content_type.startswith("image/")
+            is_too_small = len(resp.content) < 3000
+
+            if resp.status_code == 200 and is_image_ct and not is_too_small:
+                logger.info(
+                    f"[ImageGeneration] Successfully generated image "
+                    f"({len(resp.content)} bytes, ct={content_type}) for: {clean_prompt[:50]}"
+                )
                 return {
                     "success": True,
                     "url": image_url,
@@ -64,15 +77,29 @@ async def generate_ai_image(
                     "width": width,
                     "height": height,
                     "model": model,
-                    "size_bytes": len(resp.content)
+                    "size_bytes": len(resp.content),
                 }
-            else:
-                logger.warning(f"[ImageGeneration] Provider returned status {resp.status_code}")
+
+            if resp.status_code == 200 and (not is_image_ct or is_too_small):
+                logger.warning(
+                    f"[ImageGeneration] Pollinations returned a promo/rate-limit response "
+                    f"(size={len(resp.content)}, ct={content_type}). Treating as failure."
+                )
                 return {
                     "success": False,
-                    "error": f"Image generation service returned status {resp.status_code}",
-                    "url": None
+                    "error": (
+                        "Image generation is currently rate-limited by Pollinations. "
+                        "Please try again in a moment."
+                    ),
+                    "url": None,
                 }
+
+            logger.warning(f"[ImageGeneration] Provider returned status {resp.status_code}")
+            return {
+                "success": False,
+                "error": f"Image generation service returned status {resp.status_code}",
+                "url": None,
+            }
     except httpx.TimeoutException:
         logger.error("[ImageGeneration] Generation timed out after 12s")
         return {

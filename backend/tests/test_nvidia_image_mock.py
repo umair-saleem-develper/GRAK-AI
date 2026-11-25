@@ -287,3 +287,62 @@ class TestGenerateNvidiaImage:
         assert result["provider"] == "nvidia"
         assert len(calls) == 2
         assert list(calls[1][2].keys()) == ["prompt"]
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # CONTENT_FILTERED tests
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def test_content_filtered_retries_with_sanitized_prompt(self, monkeypatch, tmp_path):
+        """NVIDIA returns CONTENT_FILTERED → auto-sanitize → retry succeeds."""
+        monkeypatch.setenv("NVIDIA_API_KEY2", "nvapi-key2")
+        monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-key1")
+
+        import services.nvidia_image as m
+        monkeypatch.setattr(m, "DOWNLOADS_DIR", str(tmp_path))
+
+        call_prompts = []
+
+        async def spy_post(url, headers, json, **kwargs):
+            call_prompts.append(json.get("prompt", ""))
+            if len(call_prompts) == 1:
+                # First call: return CONTENT_FILTERED
+                return FakeResponse(200, {"artifacts": [{"finishReason": "CONTENT_FILTERED", "base64": ""}]})
+            # Second call (sanitized prompt): succeed
+            return FakeResponse(200, {"artifacts": [{"base64": FAKE_PNG}]})
+
+        client_mock = mock.AsyncMock()
+        client_mock.__aenter__ = mock.AsyncMock(return_value=client_mock)
+        client_mock.__aexit__ = mock.AsyncMock(return_value=False)
+        client_mock.post = spy_post
+
+        with mock.patch("httpx.AsyncClient", return_value=client_mock):
+            result = run(m.generate_nvidia_image("violent blood explosion"))
+
+        assert result["success"] is True
+        assert result["provider"] == "nvidia"
+        assert len(call_prompts) == 2, "Should have called NVIDIA exactly twice"
+        # Second prompt must differ from first (sanitized)
+        assert call_prompts[0] != call_prompts[1], "Retry prompt must be sanitized"
+
+    def test_content_filtered_persistent_falls_back_to_pollinations(self, monkeypatch, tmp_path):
+        """CONTENT_FILTERED on both original AND sanitized prompt → fallback to Pollinations."""
+        monkeypatch.setenv("NVIDIA_API_KEY2", "nvapi-key2")
+        monkeypatch.setenv("NVIDIA_API_KEY", "")  # only one key
+
+        import services.nvidia_image as m
+        monkeypatch.setattr(m, "DOWNLOADS_DIR", str(tmp_path))
+
+        async def always_filtered(url, headers, json, **kwargs):
+            return FakeResponse(200, {"artifacts": [{"finishReason": "CONTENT_FILTERED", "base64": ""}]})
+
+        client_mock = mock.AsyncMock()
+        client_mock.__aenter__ = mock.AsyncMock(return_value=client_mock)
+        client_mock.__aexit__ = mock.AsyncMock(return_value=False)
+        client_mock.post = always_filtered
+
+        with mock.patch("httpx.AsyncClient", return_value=client_mock):
+            result = run(m.generate_nvidia_image("violent blood scene"))
+
+        assert result["success"] is True           # Pollinations fake always succeeds
+        assert result["provider"] == "pollinations"
+        assert result["fallback"] is True

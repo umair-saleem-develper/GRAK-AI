@@ -11,10 +11,15 @@ Key priority:
   2. NVIDIA_API_KEY  (fallback if NVIDIA_API_KEY2 is missing or fails)
   3. NVIDIA_IMAGE_MODEL (legacy fallback if neither key above is set)
 
-Fallback chain on error / 4xx / 5xx / 429 / timeout:
+Fallback chain on error / 4xx / 5xx / 429 / timeout / CONTENT_FILTERED:
   1. Secondary NVIDIA key (if NVIDIA_API_KEY differs from NVIDIA_API_KEY2)
   2. Pollinations (services.image_generation.generate_ai_image)
   A WARNING is always logged explaining why fallback occurred.
+
+CONTENT_FILTERED handling:
+  When NVIDIA returns finishReason == "CONTENT_FILTERED" (or empty base64 with
+  that reason), the prompt is auto-sanitised via _sanitize_filtered_prompt()
+  and retried once before falling back to Pollinations.
 
 Provider:
   Every return dict includes "provider": "nvidia" | "pollinations" | "none",
@@ -22,6 +27,7 @@ Provider:
 """
 
 import os
+import re
 import uuid
 import base64
 import logging
@@ -113,18 +119,80 @@ def _clean_prompt(raw: str) -> str:
     return s
 
 
-def _extract_nvidia_image(data: Dict[str, Any]) -> Tuple[str | None, str | None]:
+# ── CONTENT_FILTERED sentinel & sanitizer ────────────────────────────────────
+
+class _ContentFilteredError(Exception):
+    """Raised when NVIDIA NIM returns finishReason == CONTENT_FILTERED."""
+
+
+# Terms that commonly trip NVIDIA content filters; replaced with neutral equivalents.
+_FILTER_SUBSTITUTIONS: List[Tuple[str, str]] = [
+    (r"\bblood(?:y)?\b", "red liquid"),
+    (r"\bviolenc[ey]\b", "action scene"),
+    (r"\bviolent\b", "intense"),
+    (r"\bgore\b", "scene"),
+    (r"\bnude\b|\bnaked\b|\bunclothed\b", "figure"),
+    (r"\bsex(?:ual)?\b|\berotic\b", "artistic"),
+    (r"\bdead\b|\bcorpse\b|\bcadaver\b", "motionless figure"),
+    (r"\bkill(?:ing)?\b|\bmurder\b|\bslaughter\b", "confrontation"),
+    (r"\bweapon\b|\bgun\b|\bpistol\b|\brifle\b|\bsword\b|\bknife\b|\bdagger\b", "object"),
+    (r"\bexplosion\b|\bbomb\b|\bblast\b", "burst of energy"),
+    (r"\bterror(?:ist)?\b|\bjihadist\b", "figure"),
+    (r"\bdrug[s]?\b|\bnarcotic[s]?\b", "substance"),
+    (r"\bporn(?:ographic)?\b|\bxxx\b", "artistic"),
+    (r"\bgraphic\b", "detailed"),
+    (r"\bdark\s+and\s+disturbing\b", "moody"),
+    (r"\bhorror\b", "suspenseful"),
+    (r"\bsuicid[e|al]\b", "solitary figure"),
+    (r"\bself-harm\b", "figure"),
+]
+
+
+def _sanitize_filtered_prompt(prompt: str) -> str:
+    """
+    Rewrite a CONTENT_FILTERED prompt into a neutral, safe visual description
+    by substituting flagged terms with clean equivalents.
+    Fast & deterministic — no LLM call required.
+    """
+    sanitized = prompt
+    for pattern, replacement in _FILTER_SUBSTITUTIONS:
+        sanitized = re.sub(pattern, replacement, sanitized, flags=re.IGNORECASE)
+    # Append a safety hint so the model understands the intent
+    if sanitized == prompt:
+        # Nothing was substituted — fall back to a generic landscape scene
+        sanitized = "a peaceful landscape scene, soft natural lighting, high quality"
+    logger.info(f"[NVIDIA] Sanitised CONTENT_FILTERED prompt. original='{prompt[:80]}' sanitised='{sanitized[:80]}'")
+    return sanitized
+
+
+def _extract_nvidia_image(data: Dict[str, Any], prompt: str = "") -> Tuple[str | None, str | None]:
     """
     Parse known NVIDIA NIM image response formats.
     Returns (base64_str, direct_url).
+    Raises _ContentFilteredError when finishReason == CONTENT_FILTERED.
     """
     b64 = None
     direct_url = None
 
     if "artifacts" in data and isinstance(data["artifacts"], list) and data["artifacts"]:
         art = data["artifacts"][0]
+
+        # ── CONTENT_FILTERED detection ─────────────────────────────────────────
+        finish_reason = art.get("finishReason", "")
+        if finish_reason == "CONTENT_FILTERED":
+            logger.warning(
+                f"[NVIDIA] CONTENT_FILTERED model={NVIDIA_MODEL_ID} prompt='{prompt[:80]}'"
+            )
+            raise _ContentFilteredError(f"CONTENT_FILTERED: {prompt[:80]}")
+
         b64 = art.get("base64") or art.get("b64_json")
         if not b64:
+            # Empty base64 may also accompany an unlabelled filter response
+            if finish_reason and finish_reason != "SUCCESS":
+                logger.warning(
+                    f"[NVIDIA] Non-SUCCESS finishReason='{finish_reason}' with empty base64 "
+                    f"model={NVIDIA_MODEL_ID} prompt='{prompt[:80]}'"
+                )
             direct_url = art.get("url")
     elif "image" in data:
         val = data["image"]
@@ -193,7 +261,7 @@ async def _call_nvidia_nim(
 
         if response.status_code == 200:
             data = response.json()
-            b64, direct_url = _extract_nvidia_image(data)
+            b64, direct_url = _extract_nvidia_image(data, enhanced_prompt)
 
             if b64:
                 if "," in b64:
@@ -233,6 +301,10 @@ async def _call_nvidia_nim(
         err = f"Request timed out after {int(NVIDIA_TIMEOUT_SECONDS)}s ({key_source})"
         logger.error(f"[NVIDIA] {err}")
         return None, err
+    except _ContentFilteredError:
+        # Re-raise so the caller (generate_nvidia_image) can handle CONTENT_FILTERED
+        # with auto-sanitize logic.  Do NOT swallow it here.
+        raise
     except Exception as exc:
         err = f"{key_source} exception: {exc}"
         logger.error(f"[NVIDIA] Exception: {exc}")
@@ -270,7 +342,39 @@ async def generate_nvidia_image(
                 f"[NVIDIA] ⚠ FALLBACK → Retrying {NVIDIA_MODEL_ID} with {key_source}. "
                 f"Previous failure: {last_error}"
             )
-        image_url, err = await _call_nvidia_nim(api_key, key_source, enhanced, width, height)
+
+        try:
+            image_url, err = await _call_nvidia_nim(api_key, key_source, enhanced, width, height)
+        except _ContentFilteredError:
+            # ── Auto-sanitize and retry once with the same key ─────────────────
+            sanitized = _sanitize_filtered_prompt(enhanced)
+            logger.warning(
+                f"[NVIDIA] CONTENT_FILTERED on key_source={key_source}. "
+                f"Retrying once with sanitised prompt."
+            )
+            try:
+                image_url, err = await _call_nvidia_nim(api_key, key_source, sanitized, width, height)
+            except _ContentFilteredError:
+                last_error = "CONTENT_FILTERED (sanitized prompt also filtered)"
+                logger.warning(
+                    f"[NVIDIA] CONTENT_FILTERED persists after sanitisation "
+                    f"({key_source}). Falling back."
+                )
+                continue  # try next key or fall through to _fallback
+
+            if image_url:
+                return {
+                    "success": True,
+                    "url": image_url,
+                    "prompt": raw,
+                    "enhanced_prompt": sanitized,
+                    "provider": "nvidia",
+                    "model": NVIDIA_MODEL_ID,
+                    "fallback": idx > 0,
+                }
+            last_error = err or "unknown error"
+            continue
+
         if image_url:
             return {
                 "success": True,
