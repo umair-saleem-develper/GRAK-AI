@@ -18,20 +18,24 @@ class GeminiProvider(BaseAIProvider):
     def provider_name(self) -> str:
         return "gemini"
 
-    def _convert_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        # Map generic 'user'/'assistant' roles to Gemini roles and support inline images
+    def _convert_messages(self, messages: List[Dict[str, Any]]):
+        # Extract system instructions separately for Gemini GenerateContentConfig and map user/model turns
         import base64
         import logging
         from google.genai import types
         logger = logging.getLogger(__name__)
 
+        system_parts = []
         gemini_messages = []
         for msg in messages:
             role = msg.get("role", "user")
-            if role == "assistant":
+            if role == "system":
+                sys_text = msg.get("content", "")
+                if sys_text:
+                    system_parts.append(sys_text)
+                continue
+            elif role == "assistant":
                 role = "model"
-            elif role == "system":
-                role = "user"
             
             parts = []
             img_b64 = msg.get("image_base64")
@@ -59,16 +63,21 @@ class GeminiProvider(BaseAIProvider):
                 "role": role,
                 "parts": parts
             })
-        return gemini_messages
+
+        system_instruction = "\n\n".join(system_parts).strip() if system_parts else None
+        if not gemini_messages:
+            gemini_messages.append({"role": "user", "parts": [types.Part.from_text(text="")]})
+        return gemini_messages, system_instruction
 
     async def chat(self, messages: List[Dict[str, str]], model: str, **kwargs) -> AIResponse:
-        contents = self._convert_messages(messages)
-        # Using aio execution wrapper if available, or sync wrapper if we must
-        # google-genai uses aio client under self.client.aio
-        
+        from google.genai import types
+        contents, system_instruction = self._convert_messages(messages)
+        config = types.GenerateContentConfig(system_instruction=system_instruction) if system_instruction else None
+
         response = await self.client.aio.models.generate_content(
             model=model,
-            contents=contents
+            contents=contents,
+            config=config
         )
         
         # Token usage from response.usage_metadata
@@ -87,11 +96,14 @@ class GeminiProvider(BaseAIProvider):
         )
 
     async def stream(self, messages: List[Dict[str, str]], model: str, **kwargs) -> AsyncGenerator[AIStreamChunk, None]:
-        contents = self._convert_messages(messages)
+        from google.genai import types
+        contents, system_instruction = self._convert_messages(messages)
+        config = types.GenerateContentConfig(system_instruction=system_instruction) if system_instruction else None
         
         response_stream = await self.client.aio.models.generate_content_stream(
             model=model,
-            contents=contents
+            contents=contents,
+            config=config
         )
         
         async for chunk in response_stream:

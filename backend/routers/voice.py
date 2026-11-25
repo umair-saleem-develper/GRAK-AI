@@ -6,6 +6,7 @@ import logging
 import time
 import httpx
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from services.ai.identity import GRAK_VOICE_IDENTITY_PROMPT
 
 logger = logging.getLogger("grak_voice")
 logger.setLevel(logging.INFO)
@@ -16,7 +17,8 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
 VOICE_SYSTEM = (
-    "You are Grak, a friendly and concise AI voice assistant. "
+    f"{GRAK_VOICE_IDENTITY_PROMPT} "
+    "You are a friendly and concise AI voice assistant. "
     "Always respond in 1 to 2 short conversational sentences. "
     "No markdown, no bullet points, no asterisks, no code blocks. "
     "Speak naturally as if talking to a person."

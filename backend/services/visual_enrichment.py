@@ -71,7 +71,7 @@ Output ONLY valid JSON in this exact structure:
 }}"""
 
     try:
-        res = await gateway.chat([{"role": "user", "content": extraction_prompt}])
+        res = await gateway.chat([{"role": "user", "content": extraction_prompt}], apply_identity=False)
         raw_text = (res.content or "").strip()
         json_match = re.search(r"\{[\s\S]*\}", raw_text)
         if not json_match:

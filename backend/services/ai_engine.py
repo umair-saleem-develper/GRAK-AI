@@ -7,6 +7,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from datetime import datetime
 from dotenv import load_dotenv
+from services.ai.identity import GRAK_IDENTITY_PROMPT
 
 load_dotenv(override=True)
 
@@ -171,7 +172,9 @@ def check_provider_health():
     return AVAILABLE_PROVIDERS
 
 
-SYSTEM_PROMPT = """You are Grak AI, a professional AI assistant built to provide trustworthy, accurate, logical, and helpful answers.
+SYSTEM_PROMPT = f"""{GRAK_IDENTITY_PROMPT}
+
+You are a professional AI assistant built to provide trustworthy, accurate, logical, and helpful answers.
 
 Your highest priority is correctness, not speed.
 
@@ -660,18 +663,27 @@ def generate_text_stream(messages: list):
             else:
                 client = genai.Client(api_key=GEMINI_API_KEY)
             
+            gemini_system_parts = []
             gemini_messages = []
             for m in api_messages:
-                role = "user" # default role
-                if m["role"] in ["assistant", "model"]: role = "model"
-                elif m["role"] == "system": role = "user" # Gemini doesn't support system in the array the same way sometimes, but we pass user
+                if m["role"] == "system":
+                    if m.get("content"):
+                        gemini_system_parts.append(m["content"])
+                    continue
+                role = "model" if m["role"] in ["assistant", "model"] else "user"
                 gemini_messages.append(types.Content(role=role, parts=[types.Part.from_text(text=m["content"])]))
+            if not gemini_messages:
+                gemini_messages.append(types.Content(role="user", parts=[types.Part.from_text(text="")]))
+            gemini_config = types.GenerateContentConfig(
+                system_instruction="\n\n".join(gemini_system_parts)
+            ) if gemini_system_parts else None
             print(f"[DEBUG] [{req_id}] Normalized Gemini payload roles: {[m.role for m in gemini_messages]}")
             
             print(f"[DEBUG] [{req_id}] Trying provider: Gemini")
             response = client.models.generate_content_stream(
                 model="gemini-1.5-flash",
-                contents=gemini_messages
+                contents=gemini_messages,
+                config=gemini_config
             )
             has_yielded_local = False
             for chunk in response:
@@ -866,8 +878,9 @@ def hybrid_web_research(query: str) -> str:
         return "Search successful, but OPENROUTER_API_KEY is missing to summarize the results."
 
     system_prompt = (
+        f"{GRAK_IDENTITY_PROMPT}\n\n"
         "GRAK AI MASTER SYSTEM DIRECTIVE:\n"
-        "You are Grak AI, a highly intelligent, professional, and empathetic AI assistant. Your goal is to provide world-class, user-friendly responses similar to top-tier AI models. Always adopt a helpful and clear tone. Today is June 30, 2026. You will be provided with live web search results. You MUST answer the user's query STRICTLY using ONLY the provided search results.\n\n"
+        "You are a highly intelligent, professional, and empathetic AI assistant. Your goal is to provide world-class, user-friendly responses similar to top-tier AI models. Always adopt a helpful and clear tone. Today is June 30, 2026. You will be provided with live web search results. You MUST answer the user's query STRICTLY using ONLY the provided search results.\n\n"
         "CORE DIRECTIVES:\n"
         "1. PREMIUM FORMATTING: Always use Rich Markdown. Break long text into short paragraphs. Use bullet points and bold text for readability. NEVER use Markdown tables (|---|); summarize data using a clean '📊 Data Summary' list format instead.\n"
         "2. ZERO HALLUCINATION & CITATIONS: If asked for facts, dates, or prices, you must search the web. Every claim must have a valid [Source: URL]. NEVER invent fake companies, deadlines, or data to make your answer look longer.\n"

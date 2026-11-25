@@ -5,6 +5,7 @@ from .providers.base import BaseAIProvider, AIResponse, AIStreamChunk
 from .providers.gemini import GeminiProvider
 from .providers.groq import GroqProvider
 from .providers.openrouter import OpenRouterProvider
+from .identity import apply_grak_identity
 
 logger = logging.getLogger(__name__)
 
@@ -41,15 +42,16 @@ class AIGateway:
         }
         return mapping.get(provider_name, "gemini-3.1-flash-lite-preview")
 
-    async def chat(self, messages: List[Dict[str, str]]) -> AIResponse:
+    async def chat(self, messages: List[Dict[str, str]], apply_identity: bool = True) -> AIResponse:
         """Execute a synchronous chat generation with automatic failover."""
         last_error = None
+        prepared_messages = apply_grak_identity(messages) if apply_identity else messages
         
         for provider in self.providers:
             model = self.get_model_for_provider(provider.provider_name)
             logger.info(f"[AIGateway] Attempting chat via {provider.provider_name} ({model})")
             try:
-                response = await provider.chat(messages=messages, model=model)
+                response = await provider.chat(messages=prepared_messages, model=model)
                 return response
             except Exception as e:
                 logger.error(f"[AIGateway] {provider.provider_name} failed: {e}")
@@ -59,10 +61,11 @@ class AIGateway:
         # If we reach here, all providers failed
         raise RuntimeError(f"All AI providers failed. Last error: {last_error}")
 
-    async def stream(self, messages: List[Dict[str, str]]) -> AsyncGenerator[AIStreamChunk, None]:
+    async def stream(self, messages: List[Dict[str, str]], apply_identity: bool = True) -> AsyncGenerator[AIStreamChunk, None]:
         """Execute a streaming chat generation with automatic failover at the connection level."""
         last_error = None
         has_failed_previously = False
+        prepared_messages = apply_grak_identity(messages) if apply_identity else messages
         
         for idx, provider in enumerate(self.providers):
             model = self.get_model_for_provider(provider.provider_name)
@@ -70,7 +73,7 @@ class AIGateway:
             logger.info(f"[AIGateway] Attempting stream via {provider.provider_name} ({model}) [fallback={is_fallback}]")
             content_yielded = False
             try:
-                stream_gen = provider.stream(messages=messages, model=model)
+                stream_gen = provider.stream(messages=prepared_messages, model=model)
                 
                 async for chunk in stream_gen:
                     if chunk.content:

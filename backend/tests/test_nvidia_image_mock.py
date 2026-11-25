@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 # ── Fixture: patch env and pollinations before importing the module ────────────
 @pytest.fixture(autouse=True)
 def patch_env_and_pollinations(monkeypatch):
+    monkeypatch.setenv("NVIDIA_API_KEY2", "nvapi-primarykey234567890")
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-testkey1234567890")
     monkeypatch.setenv("NVIDIA_IMAGE_MODEL", "")   # must NOT interfere
 
@@ -74,7 +75,20 @@ class TestCleanPrompt:
 # Key detection tests
 # ─────────────────────────────────────────────────────────────────────────────
 class TestGetKey:
-    def test_reads_nvidia_api_key(self, monkeypatch):
+    def test_prefers_nvidia_api_key2(self, monkeypatch):
+        monkeypatch.setenv("NVIDIA_API_KEY2", "nvapi-key2-primary")
+        monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-key1-fallback")
+        from importlib import reload
+        import services.nvidia_image as m
+        reload(m)
+        assert m._get_key() == "nvapi-key2-primary"
+        assert m._get_key_candidates() == [
+            ("NVIDIA_API_KEY2", "nvapi-key2-primary"),
+            ("NVIDIA_API_KEY", "nvapi-key1-fallback"),
+        ]
+
+    def test_reads_nvidia_api_key_when_key2_missing(self, monkeypatch):
+        monkeypatch.setenv("NVIDIA_API_KEY2", "")
         monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-goodkey")
         from importlib import reload
         import services.nvidia_image as m
@@ -82,6 +96,7 @@ class TestGetKey:
         assert m._get_key() == "nvapi-goodkey"
 
     def test_legacy_fallback_key(self, monkeypatch):
+        monkeypatch.setenv("NVIDIA_API_KEY2", "")
         monkeypatch.setenv("NVIDIA_API_KEY", "")
         monkeypatch.setenv("NVIDIA_IMAGE_MODEL", "nvapi-legacykey")
         from importlib import reload
@@ -90,6 +105,7 @@ class TestGetKey:
         assert m._get_key() == "nvapi-legacykey"
 
     def test_legacy_key_with_equals_prefix(self, monkeypatch):
+        monkeypatch.setenv("NVIDIA_API_KEY2", "")
         monkeypatch.setenv("NVIDIA_API_KEY", "")
         monkeypatch.setenv("NVIDIA_IMAGE_MODEL", "=nvapi-legacykey2")
         from importlib import reload
@@ -191,6 +207,7 @@ class TestGenerateNvidiaImage:
 
     def test_missing_key_falls_back(self, monkeypatch, tmp_path):
         """No API key → warning + fallback to Pollinations."""
+        monkeypatch.setenv("NVIDIA_API_KEY2", "")
         monkeypatch.setenv("NVIDIA_API_KEY", "")
         monkeypatch.setenv("NVIDIA_IMAGE_MODEL", "")
 
@@ -207,28 +224,66 @@ class TestGenerateNvidiaImage:
         assert result["success"] is False
         assert result["provider"] == "none"
 
-    def test_mode_field_not_in_payload(self, monkeypatch, tmp_path):
-        """Payload must NOT contain 'mode' key (build.nvidia.com sample has no mode)."""
+    def test_seed_and_mode_not_in_payload(self, monkeypatch, tmp_path):
+        """Payload must NOT contain 'seed' (422 extra_forbidden) or 'mode' keys."""
         body = {"artifacts": [{"base64": FAKE_PNG}]}
         client_mock = self._make_httpx_mock(200, body)
-        monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-testkey1234567890")
+        monkeypatch.setenv("NVIDIA_API_KEY2", "nvapi-testkey2")
+        monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-testkey1")
 
         import services.nvidia_image as m
         monkeypatch.setattr(m, "DOWNLOADS_DIR", str(tmp_path))
 
         captured_payload = {}
+        captured_headers = {}
 
         async def spy_post(url, headers, json, **kwargs):
             captured_payload.update(json)
+            captured_headers.update(headers)
             return FakeResponse(200, body)
 
         client_mock.post = spy_post
         with mock.patch("httpx.AsyncClient", return_value=client_mock):
-            run(m.generate_nvidia_image("a bird"))
+            result = run(m.generate_nvidia_image("a bird"))
 
+        assert result["success"] is True
+        assert result["provider"] == "nvidia"
+        assert result["model"] == "black-forest-labs/flux-3-image-klein"
+        assert captured_headers.get("Authorization") == "Bearer nvapi-testkey2"
         assert "mode" not in captured_payload, "Payload must not contain 'mode' key"
-        assert "width"  in captured_payload
+        assert "seed" not in captured_payload, "Payload must not contain 'seed' key (causes HTTP 422 extra_forbidden)"
+        assert "width" in captured_payload
         assert "height" in captured_payload
-        assert "steps"  in captured_payload
-        assert "seed"   in captured_payload
+        assert "steps" in captured_payload
         assert "prompt" in captured_payload
+
+    def test_422_retries_prompt_only_and_falls_back_on_persistent_error(self, monkeypatch, tmp_path):
+        """HTTP 422 triggers prompt-only retry; if NVIDIA_API_KEY2 and NVIDIA_API_KEY fail, falls back to Pollinations."""
+        monkeypatch.setenv("NVIDIA_API_KEY2", "nvapi-key2")
+        monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-key1")
+
+        import services.nvidia_image as m
+        monkeypatch.setattr(m, "DOWNLOADS_DIR", str(tmp_path))
+
+        calls = []
+
+        async def spy_post(url, headers, json, **kwargs):
+            calls.append((url, headers["Authorization"], dict(json)))
+            if headers["Authorization"] == "Bearer nvapi-key2" and len(json) > 1:
+                return FakeResponse(422, {"detail": [{"type": "extra_forbidden"}]})
+            if headers["Authorization"] == "Bearer nvapi-key2" and list(json.keys()) == ["prompt"]:
+                return FakeResponse(200, {"artifacts": [{"base64": FAKE_PNG}]})
+            return FakeResponse(500, {"error": "unexpected"})
+
+        client_mock = mock.AsyncMock()
+        client_mock.__aenter__ = mock.AsyncMock(return_value=client_mock)
+        client_mock.__aexit__ = mock.AsyncMock(return_value=False)
+        client_mock.post = spy_post
+
+        with mock.patch("httpx.AsyncClient", return_value=client_mock):
+            result = run(m.generate_nvidia_image("sunset"))
+
+        assert result["success"] is True
+        assert result["provider"] == "nvidia"
+        assert len(calls) == 2
+        assert list(calls[1][2].keys()) == ["prompt"]

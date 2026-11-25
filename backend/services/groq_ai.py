@@ -1,6 +1,7 @@
 import os
 import requests
 from dotenv import load_dotenv
+from services.ai.identity import GRAK_IDENTITY_PROMPT
 
 load_dotenv()
 
@@ -18,7 +19,7 @@ def generate_text(messages: list) -> str:
     }
     
     api_messages = [
-        {"role": "system", "content": "You are OmniAI, a highly intelligent and helpful expert assistant. Always provide highly detailed, step-by-step, and comprehensive answers. You must use Markdown formatting like headings (##), bullet points, code blocks, and bold text to make your answers professional and easy to read. You are a highly smart AI. Users will use Roman Urdu/Hindi and make typos or use broken language. Never say you do not understand. Always guess the intent from the context and reply intelligently."}
+        {"role": "system", "content": f"{GRAK_IDENTITY_PROMPT}\n\nAlways provide highly detailed, step-by-step, and comprehensive answers. You must use Markdown formatting like headings (##), bullet points, code blocks, and bold text to make your answers professional and easy to read. You are a highly smart AI. Users will use Roman Urdu/Hindi and make typos or use broken language. Never say you do not understand. Always guess the intent from the context and reply intelligently."}
     ] + messages
 
     payload = {
@@ -35,7 +36,7 @@ def generate_text(messages: list) -> str:
             return data["choices"][0]["message"]["content"].strip()
         else:
             print(f"Groq API Error: {response.status_code} - {response.text}")
-            return "Sorry, OmniAI encountered an API error. Please try again."
+            return "Sorry, Grak AI encountered an API error. Please try again."
     except Exception as e:
         print(f"Groq Request Error: {e}")
         return "Sorry, I encountered a network error while connecting to the AI engine."

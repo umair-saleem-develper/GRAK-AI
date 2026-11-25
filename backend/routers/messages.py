@@ -10,6 +10,7 @@ from database import get_db
 from models import User, Conversation, Message, AIUsage
 from services.auth import get_current_user
 from services.ai.gateway import AIGateway
+from services.ai.identity import GRAK_IDENTITY_PROMPT
 from services.visual_enrichment import get_visual_enrichment, build_visual_system_prompt
 from services.intent_router import (
     detect_intent, 
@@ -19,6 +20,7 @@ from services.intent_router import (
     INTENT_TEXT
 )
 from services.image_generation import generate_ai_image
+from services.nvidia_image import generate_nvidia_image
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
 gateway = AIGateway()
@@ -49,7 +51,7 @@ def generate_title_task(conversation_id: str, first_message: str):
         asyncio.set_event_loop(loop)
         
         try:
-            response = loop.run_until_complete(gateway.chat(messages))
+            response = loop.run_until_complete(gateway.chat(messages, apply_identity=False))
             conv.title = response.content.strip().strip('"').strip("'")
             db.commit()
         except Exception as e:
@@ -71,7 +73,7 @@ async def async_generate_title_task(conversation_id: str, first_message: str):
         messages = [{"role": "user", "content": prompt}]
         
         try:
-            response = await gateway.chat(messages)
+            response = await gateway.chat(messages, apply_identity=False)
             # Cleanup common quotes or markdown
             title = response.content.strip().replace('"', '').replace('`', '').replace('*', '')
             if len(title) > 50:
@@ -234,7 +236,10 @@ async def send_message(
         # User explicitly asked to create / generate / draw an image or custom diagram
         target_prompt = classification.get("prompt", msg_req.content)
         is_diag = classification.get("is_diagram", False)
-        ai_img_result = await generate_ai_image(target_prompt, is_diagram=is_diag)
+        if is_diag:
+            ai_img_result = await generate_ai_image(target_prompt, is_diagram=True)
+        else:
+            ai_img_result = await generate_nvidia_image(target_prompt)
         if ai_img_result.get("success"):
             deterministic_hero_block = f""":::generated-image
 image: {ai_img_result['url']}
@@ -253,8 +258,10 @@ prompt: {ai_img_result['prompt']}
         except Exception as e:
             logger.warning(f"Visual enrichment lookup error: {e}")
 
-    # Build system instructions matching user's exact A-to-Z format and Gemini/ChatGPT style
-    system_instruction = """You are Grak AI, a smart, warm, and capable AI collaborator. Follow these formatting and communication rules on every response:
+    # Build system instructions combining central Grak AI identity with A-to-Z response formatting
+    system_instruction = f"""{GRAK_IDENTITY_PROMPT}
+
+You are a smart, warm, and capable AI collaborator. Follow these formatting and communication rules on every response:
 
 1. LANGUAGE & TONE ADAPTATION:
    - Automatically match the user's language and style.

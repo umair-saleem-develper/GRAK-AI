@@ -442,9 +442,10 @@ export function GeneratedImageCard({ image, prompt, onZoom }) {
 
   const handleRetry = () => {
     setHasError(false);
-    const cleanBase = (currentSrc || image || "").split("&seed=")[0];
+    const cleanBase = (currentSrc || image || "").split(/[?&]seed=/)[0];
     const newSeed = Math.floor(Math.random() * 1000000);
-    const retryUrl = `${cleanBase}&seed=${newSeed}`;
+    const separator = cleanBase.includes("?") ? "&" : "?";
+    const retryUrl = `${cleanBase}${separator}seed=${newSeed}`;
     setCurrentSrc(retryUrl);
   };
 
